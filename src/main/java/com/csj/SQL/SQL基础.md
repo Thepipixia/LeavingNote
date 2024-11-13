@@ -1,0 +1,144 @@
+### 函数
+#### 字符串函数
+1. CONCAT(str1,str2,...)：字符串拼接
+2. LOWER(str)、UPPER(str)：将字符串转换为小写和大写
+3. TRIM(str)：去除字符串首尾的空格
+
+#### 数值函数
+1. CEIL(num)：向上取整
+2. FlOOR(num)：向下取整
+3. RAND()：返回0~1之间的随机数
+4. ROUND(num, x)：四舍五入，保留x位小数
+
+#### 日期函数
+1. CURDATE()：当前日期
+2. CURTIME()：当前时间
+3. NOW()：当前日期和时间
+4. YEAR(date)、MONTH(date)、DAY(date)：获取年、月、日
+5. DATE_ADD(date, INTERVAL x YEAR|MONTH|DAY|HOUR|MINUTE|SECOND)：日期 + x 
+6. DATEDIFF(date1, date2)：计算两个日期之间的天数
+
+#### 流程控制
+1. IF(condition, true_value, false_value)：条件判断
+2. IFNULL(value, default_value)：判断value是否为空，为空则返回default_value
+3. CASE [expr] WHEN [condition1] THEN [result1] ... ELSE [default_result] END：判断expr是否等于condition1，等于则返回result1，否则返回default_result
+
+### 约束
+1. NOT NULL：非空约束
+2. UNIQUE：唯一约束
+3. PRIMARY KEY：主键约束
+4. DEFAULT：默认约束
+5. FOREIGN KEY：外键约束
+```sql
+create table user(
+    id int primary key comment '主键id',
+    name varchar(10) not null unique comment '用户名',
+    age int check ( 0 < age && age <= 100 ) comment '年龄',
+    status char(1) default '1' comment '状态',
+    gender char(1) comment '性别'
+) comment '用户表';
+```
+
+- 添加外键
+```sql
+create table task (
+    id  int primary key comment '主键id',
+    user_id int comment '用户id',
+    constraint fk_user_user_id foreign key (user_id) references user(id)
+);
+# 后期追加
+alter table task add constraint fk_user_user_id foreign key (user_id) references user(id);
+```
+删除user表中已被task关联的数据时报错：Cannot delete or update a parent row: a foreign key constraint fails (`demo`.`task`, CONSTRAINT `fk_user_user_id` FOREIGN KEY (`user_id`) REFERENCES `user` (`id`))
+
+- 删除外键
+```sql
+alter table task drop foreign key(constraint) fk_user_user_id;
+```
+
+- 外检更改的操作
+1. NO ACTION、RESTIRCT：父表删除时，若有外键，则不允许删除
+2. SET NULL：父表删除时，字表外键设置为NULL
+3. SET DEFAULT：父表删除时，字表外键设置为默认值
+4. CASCADE：父表删除时，字表外键也删除
+
+### 事务
+事务是一组不可分割的操作的集合，要么全部执行，要么全部不执行
+
+#### 事务的四大特性ACID
+- 原子性(Atomicity)：事务中的操作要么全部执行，要么全部不执行
+- 一致性(Consistency)：事务执行前和执行后数据都要保持一致
+- 隔离性(Isolation)：事务之间互不影响
+- 持久性(Durability)：事务执行后，对数据库的修改是持久的
+
+#### 事务并发导致的问题
+| id | name     | balance |
+|----|----------|---------|
+| 1  | zhangsan | 50      |
+| 2  | wangwu   | 50      |
+
+注意：下面就不写sql了，简化写一下
+
+#### 脏读
+> 即一个事务读取到另一个事务修改过但未提交的数据，另一种说法是，一个事物多次用同一个sql查询，发现查询的结果变多了
+
+| 时间 | 事务1              | 事务2               |
+|----|------------------|-------------------|
+| 1  | start transaction |                   |
+| 2  |                  | start transaction |
+| 3  |                  | 将zhangsan的余额-10   |
+| 4  | 查询zhangsan的余额为40 |                   |
+| 5  |                  | rollback，余额变为50   |
+- 此时事务1第一次读到的数据就是过期的数据，即脏数据
+
+#### 不可重复读
+> 即在一个事务多次读取同一个数据，出现两次读取的数据不一样
+
+| 时间 | 事务1                | 事务2                |
+|----|--------------------|--------------------|
+| 1  | start transaction; | start transaction; |
+| 2  | 查询zhangsan的余额为50|                    |
+| 3  |                    | 将zhangsan的余额-10    |
+| 4  |                    | commit             |
+| 5  | 查询zhangsan的余额为40|                    |
+- 事务1第一次读取到50，没有进行任何操作，再次读取变为40，该现象被称为不可重复读
+
+#### 幻读
+> 即在一个事务运行期间，另一个事务插入或删除了某条数据，导致第一个事务查询不到该条数据，但也无法插入
+
+| 时间 | 事务1                     | 事务2                |
+|----|-------------------------|--------------------|
+| 1  | start transaction;      | start transaction; |
+| 2  | 查询id为3的数据，结果为空          |                    |
+| 3  |                         | 插入id为3的数据          |
+| 4  |                         | commit             |
+| 5  | 插入id为3的数据，报错数据库中已经有该数据了 |                    |
+- 解决幻读可以将事务隔离等级设置为SERIALIZABLE
+- 查询时使用select ... lock in share mode; 向索引中加入临键锁，使得其他事务无法在间隙中插入数据
+
+#### 事务隔离级别
+
+##### READ UNCOMMITTED
+> 读未提交：指事务还没提交，他做的变更就能被其他事务看到
+- 允许脏读，允许不可重复读，允许幻读
+- 脏读中所示，事务2还未提交，事务1就可以看到修改
+
+
+##### READ COMMITTED
+> 读已提交：指事务提交后，变更才能被其他事务看到
+- 不允许脏读，允许不可重复读，允许幻读
+- 不允许脏读，事务2修改了但未提交，事务1查询到的仍然是原来的值
+- 允许不可重复读，事务1第一次查询到原来的值，事务2修改并提交，此时事务1再次查询的值是修改后的值，与第一次查到的不一致
+
+##### REPEATABLE READ（MYSQL默认）
+> 可重复读：指事务执行从开始到结束，看到的数据都是一致的
+- 不允许脏读，不允许不可重复读，允许幻读
+- 不允许不可重复读，事务2修改并提交新值，但事务1查询的数据是一致的，并不会查询到新的值
+- 允许幻读，事务2插入或删除数据，虽然事务1不会查询到事务2插入或删除的值，但会在自己插入或删除id相同的行时，发现数据已经被插入或删除
+
+##### SERIALIZABLE
+> 串行化：不允许多个事务对同一条记录进行读写操作
+- 不允许脏读，不允许不可重复读，不允许幻读
+- 不允许幻读，事务1对一条数据进行操作时，事务2无法同时对该数据执行其他操作
+
+### 存储引擎
